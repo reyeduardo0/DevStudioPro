@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --animate-bar-1: bar-1 3s ease-in-out infinite;
+  --animate-bar-2: bar-2 3.5s ease-in-out infinite;
+  --animate-bar-3: bar-3 2.5s ease-in-out infinite;
+  --animate-bar-4: bar-4 4s ease-in-out infinite;
+  --animate-bar-5: bar-5 3.2s ease-in-out infinite;
+  --animate-bar-6: bar-6 2.8s ease-in-out infinite;
+  --animate-float-slow: float-slow 4s ease-in-out infinite;
+  --animate-sweep: sweep 2s linear infinite;
+  --animate-glow-pulse: glow-pulse 2s infinite;
+
+  @keyframes bar-1 {
+    0%, 100% { height: 30%; }
+    50% { height: 35%; }
+  }
+  @keyframes bar-2 {
+    0%, 100% { height: 45%; }
+    50% { height: 40%; }
+  }
+  @keyframes bar-3 {
+    0%, 100% { height: 60%; }
+    50% { height: 68%; }
+  }
+  @keyframes bar-4 {
+    0%, 100% { height: 85%; }
+    50% { height: 90%; }
+  }
+  @keyframes bar-5 {
+    0%, 100% { height: 50%; }
+    50% { height: 45%; }
+  }
+  @keyframes bar-6 {
+    0%, 100% { height: 70%; }
+    50% { height: 75%; }
+  }
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(200%); }
+  }
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 5px rgba(184,250,46,0.2); text-shadow: 0 0 2px rgba(184,250,46,0.2); }
+    50% { box-shadow: 0 0 20px rgba(184,250,46,0.8); text-shadow: 0 0 8px rgba(184,250,46,0.8); }
+  }
+}

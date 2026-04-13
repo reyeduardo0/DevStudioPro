@@ -1,0 +1,5 @@
+{
+  "name": "DevStudio Pro",
+  "description": "Agencia de desarrollo de software premium con chatbot de voz de IA",
+  "requestFramePermissions": ["microphone"]
+}
