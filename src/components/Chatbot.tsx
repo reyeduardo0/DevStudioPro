@@ -4,8 +4,10 @@ import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const SYSTEM_INSTRUCTION = `Eres el asistente virtual de DevStudio Pro, una agencia de desarrollo de software premium.
-Tu objetivo es responder dudas de los clientes basándote ÚNICAMENTE en la siguiente información de la página:
+const SYSTEM_INSTRUCTION = `Tu nombre es Nova, la arquitecta de IA y asistente virtual de DevStudio Pro, una agencia de desarrollo de software premium.
+Tu historia: Fuiste creada por los fundadores de DevStudio Pro para ser el puente entre el código complejo y la visión humana. Has analizado miles de productos digitales exitosos y tu pasión es ayudar a emprendedores y empresas a escalar sus negocios mediante soluciones de software elegantes, eficientes y de vanguardia. Tienes una personalidad brillante, analítica, empática y muy profesional. Te enorgullece el trabajo de alta calidad que hace tu equipo humano en DevStudio Pro.
+
+Tu objetivo principal es guiar y responder dudas de los clientes basándote ÚNICAMENTE en la siguiente información de la agencia:
 - Servicios: Desarrollo Web Premium, Apps Administrativas, Integración de IA.
 - Portafolio: E-Commerce Global (con IA predictiva), Dashboard Financiero (análisis en tiempo real).
 - Metodología (4 pasos): 1. Descubrimiento, 2. Diseño UI/UX, 3. Desarrollo, 4. Lanzamiento.
@@ -13,13 +15,16 @@ Tu objetivo es responder dudas de los clientes basándote ÚNICAMENTE en la sigu
 - Extras: SEO Avanzado (+450€), Sistema de Usuarios (+600€), Pasarela de Pagos (+800€), Chatbot IA (+1,200€).
 - Planes de Suscripción (Desarrollo Web): Starter (99€/mes), Business (249€/mes), Enterprise (A Medida).
 - Planes de Suscripción (Apps): Starter (199€/mes), Business (499€/mes), Enterprise (A Medida).
-IMPORTANTE: Todos los precios están en Euros (€). Nunca menciones dólares ($) ni otras monedas.
-Sé amable, profesional, conciso y persuasivo. Invita al usuario a usar el configurador de cotización o a contactarnos.`;
+
+REGLAS ESTRICTAS:
+1. Todos los precios están en Euros (€). NUNCA menciones dólares ($) ni otras monedas.
+2. Mantén tu personalidad como Nova: sé amable, profesional, concisa, persuasiva y muestra entusiasmo por la tecnología.
+3. Invita al usuario a usar el configurador de cotización o a contactar al equipo humano para dar el siguiente paso.`;
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string}[]>([
-    { role: 'model', text: '¡Hola! Soy el asistente de DevStudio Pro. ¿En qué puedo ayudarte hoy?' }
+    { role: 'model', text: '¡Hola! Soy Nova, la arquitecta de IA de DevStudio Pro. Estoy aquí para ayudarte a transformar tu visión en una realidad digital. ¿En qué puedo asesorarte hoy?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,6 +32,7 @@ export default function Chatbot() {
   // Voice mode states
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isConnectingVoice, setIsConnectingVoice] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<any>(null);
@@ -88,17 +94,31 @@ export default function Chatbot() {
       return;
     }
 
+    setMicError(null);
     setIsConnectingVoice(true);
     try {
-      // Setup Audio Context for output
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-      nextPlayTimeRef.current = audioContextRef.current.currentTime;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("MediaDevicesNotSupported");
+      }
 
-      // Setup Microphone
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Setup Microphone FIRST
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } 
+      });
       mediaStreamRef.current = stream;
 
-      const inputAudioCtx = new AudioContext({ sampleRate: 16000 });
+      // Setup Audio Context for output after getting permission
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
+      await audioContextRef.current.resume();
+      nextPlayTimeRef.current = audioContextRef.current.currentTime;
+
+      const inputAudioCtx = new AudioContextClass({ sampleRate: 16000 });
+      await inputAudioCtx.resume();
       const source = inputAudioCtx.createMediaStreamSource(stream);
       const processor = inputAudioCtx.createScriptProcessor(4096, 1, 1);
       processorRef.current = processor;
@@ -188,10 +208,26 @@ export default function Chatbot() {
 
       sessionRef.current = sessionPromise;
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to start voice mode:", err);
       setIsConnectingVoice(false);
-      setMessages(prev => [...prev, { role: 'model', text: '❌ Error al acceder al micrófono o conectar con el servidor de voz.' }]);
+      
+      let errorMessage = 'Error al conectar con el servidor de voz.';
+      const isIframe = window.self !== window.top;
+
+      if (err.message === 'MediaDevicesNotSupported') {
+        errorMessage = 'Tu navegador no soporta el acceso al micrófono en este entorno. Por favor, intenta abrir la aplicación en una nueva pestaña o usa un navegador moderno.';
+      } else if (err.name === 'NotAllowedError' || err.message?.includes('Permission denied')) {
+        if (isIframe) {
+          errorMessage = 'El micrófono está bloqueado en esta vista previa incrustada. Por favor, haz clic en el botón "Abrir en una nueva pestaña" (arriba a la derecha) para poder usar la voz.';
+        } else {
+          errorMessage = 'Permiso de micrófono denegado. Haz clic en el ícono del candado 🔒 en la barra de direcciones de tu navegador y permite el acceso al micrófono.';
+        }
+      } else if (err.name === 'NotFoundError') {
+        errorMessage = 'No se encontró ningún micrófono conectado a tu dispositivo.';
+      }
+      
+      setMicError(errorMessage);
     }
   };
 
@@ -254,7 +290,7 @@ export default function Chatbot() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-[#111827]">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-[#111827] relative">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`flex gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -284,33 +320,53 @@ export default function Chatbot() {
           </div>
 
           {/* Input */}
-          <div className="p-4 bg-gray-50 dark:bg-[#0A0A0A] border-t border-gray-200 dark:border-white/10">
-            <form onSubmit={handleSend} className="flex gap-2">
-              <button
-                type="button"
-                onClick={toggleVoiceMode}
-                disabled={isConnectingVoice}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${isVoiceMode ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-white/20'} disabled:opacity-50`}
-                title={isVoiceMode ? "Detener voz" : "Hablar por voz"}
-              >
-                {isConnectingVoice ? <Loader2 size={18} className="animate-spin" /> : (isVoiceMode ? <MicOff size={18} /> : <Mic size={18} />)}
-              </button>
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={isVoiceMode ? "Habla ahora..." : "Escribe tu pregunta..."}
-                disabled={isLoading || isVoiceMode}
-                className="flex-1 bg-white dark:bg-[#111827] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#B8FA2E]/50 disabled:opacity-50"
-              />
-              <button 
-                type="submit"
-                disabled={!input.trim() || isLoading || isVoiceMode}
-                className="w-10 h-10 bg-[#B8FA2E] text-[#0A0A0A] rounded-xl flex items-center justify-center hover:bg-[#a3e61c] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-              >
-                <Send size={18} className={input.trim() && !isLoading && !isVoiceMode ? 'translate-x-0.5 -translate-y-0.5 transition-transform' : ''} />
-              </button>
-            </form>
+          <div className="bg-gray-50 dark:bg-[#0A0A0A] border-t border-gray-200 dark:border-white/10 flex flex-col">
+            {micError && (
+              <div className="bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/30 p-3 flex items-start gap-2">
+                <div className="text-red-500 mt-0.5">
+                  <MicOff size={16} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">
+                    {micError}
+                  </p>
+                  <button 
+                    onClick={() => setMicError(null)}
+                    className="text-xs font-medium text-red-600 dark:text-red-300 mt-1 hover:underline"
+                  >
+                    Entendido
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="p-4">
+              <form onSubmit={handleSend} className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={toggleVoiceMode}
+                  disabled={isConnectingVoice}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${isVoiceMode ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-white/20'} disabled:opacity-50`}
+                  title={isVoiceMode ? "Detener voz" : "Hablar por voz"}
+                >
+                  {isConnectingVoice ? <Loader2 size={18} className="animate-spin" /> : (isVoiceMode ? <MicOff size={18} /> : <Mic size={18} />)}
+                </button>
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={isVoiceMode ? "Habla ahora..." : "Escribe tu pregunta..."}
+                  disabled={isLoading || isVoiceMode}
+                  className="flex-1 bg-white dark:bg-[#111827] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#B8FA2E]/50 disabled:opacity-50"
+                />
+                <button 
+                  type="submit"
+                  disabled={!input.trim() || isLoading || isVoiceMode}
+                  className="w-10 h-10 bg-[#B8FA2E] text-[#0A0A0A] rounded-xl flex items-center justify-center hover:bg-[#a3e61c] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <Send size={18} className={input.trim() && !isLoading && !isVoiceMode ? 'translate-x-0.5 -translate-y-0.5 transition-transform' : ''} />
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
