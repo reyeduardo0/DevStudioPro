@@ -5,8 +5,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, Modality } from '@google/genai';
 import Chatbot from './components/Chatbot';
+import { Bot, Volume2 } from 'lucide-react';
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+const DEV_AVATAR = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256&h=256&auto=format&fit=crop";
 
 function AnimatedCounter({ from = 0, to, duration = 2.5, prefix, suffix }: { from?: number, to: number, duration?: number, prefix?: React.ReactNode, suffix?: React.ReactNode }) {
   const [count, setCount] = useState(from);
@@ -78,8 +83,112 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   
+  // AI Advisor State
+  const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
   // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const speakText = async (text: string) => {
+    try {
+      setIsSpeaking(true);
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
+      }
+      await audioContextRef.current.resume();
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-tts-preview",
+        contents: [{ parts: [{ text: `Dime con entusiasmo profesional: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio && audioContextRef.current) {
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const pcm16 = new Int16Array(bytes.buffer);
+        const audioBuffer = audioContextRef.current.createBuffer(1, pcm16.length, 24000);
+        const channelData = audioBuffer.getChannelData(0);
+        for (let i = 0; i < pcm16.length; i++) {
+          channelData[i] = pcm16[i] / 0x7FFF;
+        }
+
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContextRef.current.destination);
+        source.start(0);
+        source.onended = () => setIsSpeaking(false);
+      } else {
+        setIsSpeaking(false);
+      }
+    } catch (error) {
+      console.error("TTS error:", error);
+      setIsSpeaking(false);
+    }
+  };
+
+  const getAiRecommendation = async () => {
+    setIsAiLoading(true);
+    setAiRecommendation(null);
+    try {
+      const projectNames = {
+        'landing': 'Landing Page',
+        'ecommerce': 'E-Commerce',
+        'admin_app': 'App Administrativa',
+        'ia_integration': 'Plataforma con IA'
+      };
+      const featureNames = {
+        'seo': 'SEO Avanzado',
+        'login': 'Sistema de Usuarios',
+        'payments': 'Pasarela de Pagos',
+        'chatbot': 'Chatbot IA'
+      };
+
+      const selectedFeaturesArray = Object.entries(features)
+        .filter(([_, val]) => val)
+        .map(([key]) => featureNames[key as keyof typeof featureNames]);
+
+      const selectedFeatures = selectedFeaturesArray.length > 0 ? selectedFeaturesArray.join(', ') : 'ninguna característica extra';
+
+      const prompt = `Actúa como Dev, la experta en arquitectura de software de DevStudio Pro. 
+      El cliente ha seleccionado un proyecto de tipo ${projectNames[selectedProject as keyof typeof selectedProject]} 
+      con las siguientes características adicionales: ${selectedFeatures}.
+      
+      Explica brevemente (máximo 4 oraciones) por qué esta combinación es ideal para su negocio y qué valor adicional aportará DevStudio Pro. 
+      Sé persuasivo, profesional y entusiasta. Sé directo.`;
+
+      const result = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      });
+
+      const recommendation = result.text;
+      setAiRecommendation(recommendation);
+      speakText(recommendation);
+    } catch (error) {
+      console.error("AI Recommendation error:", error);
+      const fallback = "Nuestra IA Dev sugiere que esta combinación es excelente para escalar tu negocio. Contáctanos para profundizar en los detalles técnicos.";
+      setAiRecommendation(fallback);
+      speakText(fallback);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,8 +250,6 @@ export default function App() {
       setOcrData(null);
 
       try {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '' });
-        
         // Extract base64 data without the data:image/... prefix
         const base64Data = base64String.split(',')[1];
 
@@ -235,6 +342,7 @@ export default function App() {
     if (features['chatbot']) total += 1200;
 
     setTotalPrice(total);
+    setAiRecommendation(null); // Clear recommendation when selection changes
   }, [selectedProject, features]);
 
   const toggleFeature = (feature: string) => {
@@ -887,9 +995,65 @@ export default function App() {
                     <span>{id === 'seo' ? '450' : id === 'login' ? '600' : id === 'payments' ? '800' : '1.200'} €</span>
                   </div>
                 ))}
-                <div className="pt-4 border-t border-gray-200 dark:border-white/10 flex justify-between items-center">
+                <div className="pt-4 border-t border-gray-200 dark:border-white/10 flex justify-between items-center mb-6">
                   <span className="font-bold text-gray-900 dark:text-white">Total Estimado</span>
                   <span className="text-3xl font-display font-bold text-[#B8FA2E]">{totalPrice.toLocaleString('es-ES')} €</span>
+                </div>
+
+                {/* AI advisor button */}
+                <div className="mb-6">
+                  {!aiRecommendation && !isAiLoading ? (
+                    <button 
+                      onClick={getAiRecommendation}
+                      className="w-full py-3 px-4 bg-purple-600/10 hover:bg-purple-600/20 text-purple-600 dark:text-purple-400 border border-purple-600/30 rounded-xl flex items-center justify-center gap-2 transition-all group"
+                    >
+                      <Bot size={18} className="group-hover:scale-110 transition-transform" />
+                      <span className="text-sm font-medium">¿Qué opina Dev (IA) de mi selección?</span>
+                    </button>
+                  ) : isAiLoading ? (
+                    <div className="p-4 bg-gray-50 dark:bg-white/5 rounded-xl border border-gray-200 dark:border-white/10 flex items-center gap-3">
+                      <div className="w-2 h-2 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="text-xs text-gray-500 italic">Dev está analizando tu proyecto...</span>
+                    </div>
+                  ) : (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 bg-[#B8FA2E]/10 border border-[#B8FA2E]/30 rounded-xl"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src={DEV_AVATAR} 
+                            alt="Dev" 
+                            className="w-6 h-6 rounded-full border border-[#B8FA2E] object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                          <span className="text-xs font-bold text-[#0A0A0A] dark:text-[#B8FA2E] uppercase tracking-wider">Recomendación de Dev</span>
+                        </div>
+                        {isSpeaking && (
+                          <div className="flex gap-1">
+                            <div className="w-1 h-3 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-1 h-3 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-1 h-3 bg-[#B8FA2E] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                        )}
+                        {!isSpeaking && aiRecommendation && (
+                          <button 
+                            onClick={() => speakText(aiRecommendation)}
+                            className="text-[#0A0A0A] dark:text-[#B8FA2E] hover:scale-110 transition-transform"
+                          >
+                            <Volume2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed italic">
+                        "{aiRecommendation}"
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
               </div>
               <button className="w-full py-4 rounded-xl bg-[#B8FA2E] text-[#0A0A0A] font-bold hover:bg-white transition-colors">

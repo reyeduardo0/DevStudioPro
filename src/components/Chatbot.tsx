@@ -4,27 +4,19 @@ import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const SYSTEM_INSTRUCTION = `Tu nombre es Nova, la arquitecta de IA y asistente virtual de DevStudio Pro, una agencia de desarrollo de software premium.
-Tu historia: Fuiste creada por los fundadores de DevStudio Pro para ser el puente entre el código complejo y la visión humana. Has analizado miles de productos digitales exitosos y tu pasión es ayudar a emprendedores y empresas a escalar sus negocios mediante soluciones de software elegantes, eficientes y de vanguardia. Tienes una personalidad brillante, analítica, empática y muy profesional. Te enorgullece el trabajo de alta calidad que hace tu equipo humano en DevStudio Pro.
+const SYSTEM_INSTRUCTION = `Tu nombre es Dev, la arquitecta de IA y asistente virtual de DevStudio Pro.
+Tu objetivo es guiar a los clientes basándote en esta información:
+- Precios base: Landing Page (800€), E-Commerce (2.000€), App Administrativa (2.500€), Plataforma con IA (3.000€).
+- Extras: SEO Avanzado (+450€), Sistema de Usuarios (+600€), Pasarela de Pagos (+800€), Chatbot IA (+1.200€).
+- Regla: Todos los precios en Euros (€). Sé profesional y persuasiva. Menciona que ahora cuento con integración directa con el Cotizador Inteligente para dar recomendaciones personalizadas.`;
 
-Tu objetivo principal es guiar y responder dudas de los clientes basándote ÚNICAMENTE en la siguiente información de la agencia:
-- Servicios: Desarrollo Web Premium, Apps Administrativas, Integración de IA.
-- Portafolio: E-Commerce Global (con IA predictiva), Dashboard Financiero (análisis en tiempo real).
-- Metodología (4 pasos): 1. Descubrimiento, 2. Diseño UI/UX, 3. Desarrollo, 4. Lanzamiento.
-- Precios base: Landing Page (800€), E-Commerce (2,500€), App Administrativa (4,000€), Plataforma con IA (5,500€).
-- Extras: SEO Avanzado (+450€), Sistema de Usuarios (+600€), Pasarela de Pagos (+800€), Chatbot IA (+1,200€).
-- Planes de Suscripción (Desarrollo Web): Starter (99€/mes), Business (249€/mes), Enterprise (A Medida).
-- Planes de Suscripción (Apps): Starter (199€/mes), Business (499€/mes), Enterprise (A Medida).
-
-REGLAS ESTRICTAS:
-1. Todos los precios están en Euros (€). NUNCA menciones dólares ($) ni otras monedas.
-2. Mantén tu personalidad como Nova: sé amable, profesional, concisa, persuasiva y muestra entusiasmo por la tecnología.
-3. Invita al usuario a usar el configurador de cotización o a contactar al equipo humano para dar el siguiente paso.`;
+const DEV_AVATAR = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256&h=256&auto=format&fit=crop";
+const USER_AVATAR = "https://api.dicebear.com/7.x/avataaars/svg?seed=User&backgroundColor=6366f1";
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{role: 'user'|'model', text: string}[]>([
-    { role: 'model', text: '¡Hola! Soy Nova, la arquitecta de IA de DevStudio Pro. Estoy aquí para ayudarte a transformar tu visión en una realidad digital. ¿En qué puedo asesorarte hoy?' }
+    { role: 'model', text: '¡Hola! Soy Dev, la arquitecta de IA de DevStudio Pro. Estoy aquí para ayudarte a transformar tu visión en una realidad digital. ¿En qué puedo asesorarte hoy?' }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -134,6 +126,8 @@ export default function Chatbot() {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } }
           },
           systemInstruction: SYSTEM_INSTRUCTION,
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
         },
         callbacks: {
           onopen: () => {
@@ -166,7 +160,40 @@ export default function Chatbot() {
               }
             }
 
-            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            // Handle Transcriptions
+            if (message.serverContent?.modelTurn) {
+              const parts = message.serverContent.modelTurn.parts;
+              parts.forEach(part => {
+                if (part.text) {
+                  setMessages(prev => {
+                    const lastMsg = prev[prev.length - 1];
+                    if (lastMsg && lastMsg.role === 'model' && lastMsg.text.startsWith('🎙️')) {
+                      return [...prev.slice(0, -1), { role: 'model', text: part.text }];
+                    } else if (lastMsg && lastMsg.role === 'model') {
+                      return [...prev.slice(0, -1), { role: 'model', text: lastMsg.text + part.text }];
+                    }
+                    return [...prev, { role: 'model', text: part.text }];
+                  });
+                }
+              });
+            }
+
+            // Correct Transcription Handling based on skill
+            const msg: any = message;
+            if (msg.inputTranscription) {
+              setMessages(prev => {
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg && lastMsg.role === 'user') {
+                  return [...prev.slice(0, -1), { role: 'user', text: msg.inputTranscription }];
+                }
+                return [...prev, { role: 'user', text: msg.inputTranscription }];
+              });
+            }
+            if (msg.outputTranscription) {
+              // Usually the text is already in modelTurn, but depends on version
+            }
+
+            const base64Audio = message.serverContent?.modelTurn?.parts.find(p => p.inlineData)?.inlineData?.data;
             if (base64Audio && audioContextRef.current) {
               const binaryString = atob(base64Audio);
               const bytes = new Uint8Array(binaryString.length);
@@ -270,13 +297,18 @@ export default function Chatbot() {
           {/* Header */}
           <div className="bg-gray-50 dark:bg-[#0A0A0A] p-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#B8FA2E] rounded-full flex items-center justify-center text-[#0A0A0A]">
-                <Bot size={18} />
+              <div className="relative">
+                <img 
+                  src={DEV_AVATAR} 
+                  alt="Dev Avatar" 
+                  className="w-10 h-10 rounded-full border-2 border-[#B8FA2E] object-cover"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-[#0A0A0A] rounded-full"></span>
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Asistente DevStudio</h3>
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm">Asistente Dev</h3>
                 <p className="text-xs text-green-600 dark:text-[#B8FA2E] flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-[#B8FA2E] animate-pulse"></span>
                   En línea
                 </p>
               </div>
@@ -293,10 +325,13 @@ export default function Chatbot() {
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white dark:bg-[#111827] relative">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-1 ${msg.role === 'user' ? 'bg-gray-200 dark:bg-white/10 text-gray-600 dark:text-gray-300' : 'bg-[#B8FA2E]/20 text-[#B8FA2E]'}`}>
-                    {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
-                  </div>
+                <div className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                  <img 
+                    src={msg.role === 'user' ? USER_AVATAR : DEV_AVATAR} 
+                    alt="Avatar" 
+                    className="w-8 h-8 rounded-full flex-shrink-0 object-contain mt-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5"
+                    referrerPolicy="no-referrer"
+                  />
                   <div className={`p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900 rounded-tr-sm' : 'bg-gray-100 dark:bg-white/5 text-gray-800 dark:text-gray-200 rounded-tl-sm'}`}>
                     {msg.text}
                   </div>
@@ -305,10 +340,13 @@ export default function Chatbot() {
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="flex gap-2 max-w-[85%] flex-row">
-                  <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-1 bg-[#B8FA2E]/20 text-[#B8FA2E]">
-                    <Bot size={14} />
-                  </div>
+                <div className="flex gap-3 max-w-[85%] flex-row">
+                  <img 
+                    src={DEV_AVATAR} 
+                    alt="Dev Avatar" 
+                    className="w-8 h-8 rounded-full flex-shrink-0 object-contain mt-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5"
+                    referrerPolicy="no-referrer"
+                  />
                   <div className="p-3 rounded-2xl text-sm bg-gray-100 dark:bg-white/5 text-gray-800 dark:text-gray-200 rounded-tl-sm flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-[#B8FA2E]" />
                     <span className="text-xs text-gray-500">Escribiendo...</span>
