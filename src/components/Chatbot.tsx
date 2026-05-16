@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Bot, User, Loader2, Mic, MicOff } from 'lucide-react';
 import { GoogleGenAI, Modality, LiveServerMessage } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const SYSTEM_INSTRUCTION = `Tu nombre es Dev, la arquitecta de IA y asistente virtual de DevStudio Pro.
 Tu objetivo es guiar a los clientes basándote en esta información:
@@ -38,6 +39,7 @@ export default function Chatbot() {
   const playbackSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
   useEffect(() => {
+    if (!ai) return;
     if (!chatRef.current) {
       chatRef.current = ai.chats.create({
         model: 'gemini-3-flash-preview',
@@ -70,6 +72,10 @@ export default function Chatbot() {
     setIsLoading(true);
 
     try {
+      if (!chatRef.current) {
+        setMessages(prev => [...prev, { role: 'model', text: 'El asistente de IA no está configurado correctamente (falta la clave de API).' }]);
+        return;
+      }
       const response = await chatRef.current.sendMessage({ message: userText });
       setMessages(prev => [...prev, { role: 'model', text: response.text }]);
     } catch (error) {
@@ -89,11 +95,10 @@ export default function Chatbot() {
     setMicError(null);
     setIsConnectingVoice(true);
     try {
+      if (!ai) throw new Error("AI not initialized");
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("MediaDevicesNotSupported");
       }
-
-      // Setup Microphone FIRST
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,

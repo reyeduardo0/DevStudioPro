@@ -9,7 +9,8 @@ import { GoogleGenAI, Type, Modality } from '@google/genai';
 import Chatbot from './components/Chatbot';
 import { Bot, Volume2 } from 'lucide-react';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const apiKey = process.env.GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const DEV_AVATAR = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256&h=256&auto=format&fit=crop";
 
@@ -94,6 +95,10 @@ export default function App() {
 
   const speakText = async (text: string) => {
     try {
+      if (!ai) {
+        console.warn("AI not initialized. Check GEMINI_API_KEY.");
+        return;
+      }
       setIsSpeaking(true);
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!audioContextRef.current) {
@@ -146,6 +151,9 @@ export default function App() {
     setIsAiLoading(true);
     setAiRecommendation(null);
     try {
+      if (!ai) {
+        throw new Error("AI not initialized");
+      }
       const projectNames = {
         'landing': 'Landing Page',
         'ecommerce': 'E-Commerce',
