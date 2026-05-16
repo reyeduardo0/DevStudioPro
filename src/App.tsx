@@ -198,7 +198,7 @@ export default function App() {
     }
   };
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     let isValid = true;
     const errors = { name: '', email: '', details: '' };
@@ -228,13 +228,48 @@ export default function App() {
 
     if (isValid) {
       setIsSubmitting(true);
-      // Simulate API call
-      setTimeout(() => {
+      const formspreeKey = import.meta.env.VITE_FORMSPREE_KEY;
+
+      if (!formspreeKey) {
+        console.warn("VITE_FORMSPREE_KEY no configurada. Usando simulación para demo.");
+        // Simulate API call for demo if key is not set
+        setTimeout(() => {
+          setIsSubmitting(false);
+          setSubmitSuccess(true);
+          setContactForm({ name: '', email: '', details: '' });
+          setTimeout(() => setSubmitSuccess(false), 5000);
+        }, 1500);
+        return;
+      }
+
+      try {
+        const response = await fetch(`https://formspree.io/f/${formspreeKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            name: contactForm.name,
+            email: contactForm.email,
+            message: contactForm.details,
+            _subject: `Nueva solicitud en DevStudio Pro de ${contactForm.name}`
+          })
+        });
+
+        if (response.ok) {
+          setSubmitSuccess(true);
+          setContactForm({ name: '', email: '', details: '' });
+          setTimeout(() => setSubmitSuccess(false), 5000);
+        } else {
+          throw new Error('Error al enviar el formulario');
+        }
+      } catch (error) {
+        console.error("Formspree error:", error);
+        alert("Hubo un problema al enviar su mensaje. Por favor intente más tarde.");
+      } finally {
         setIsSubmitting(false);
-        setSubmitSuccess(true);
-        setContactForm({ name: '', email: '', details: '' });
-        setTimeout(() => setSubmitSuccess(false), 5000);
-      }, 1500);
+      }
     }
   };
 
