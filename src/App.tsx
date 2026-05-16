@@ -225,9 +225,9 @@ export default function App() {
   useEffect(() => {
     let total = 0;
     if (selectedProject === 'landing') total += 800;
-    if (selectedProject === 'ecommerce') total += 2500;
-    if (selectedProject === 'admin_app') total += 4000;
-    if (selectedProject === 'ia_integration') total += 5500;
+    if (selectedProject === 'ecommerce') total += 2000;
+    if (selectedProject === 'admin_app') total += 2500;
+    if (selectedProject === 'ia_integration') total += 3000;
 
     if (features['seo']) total += 450;
     if (features['login']) total += 600;
@@ -827,9 +827,9 @@ export default function App() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   {[
                     { id: 'landing', name: 'Landing Page', price: '800 €' },
-                    { id: 'ecommerce', name: 'E-Commerce', price: '2.500 €' },
-                    { id: 'admin_app', name: 'App Administrativa', price: '4.000 €' },
-                    { id: 'ia_integration', name: 'Plataforma con IA', price: '5.500 €' }
+                    { id: 'ecommerce', name: 'E-Commerce', price: '2.000 €' },
+                    { id: 'admin_app', name: 'App Administrativa', price: '2.500 €' },
+                    { id: 'ia_integration', name: 'Plataforma con IA', price: '3.000 €' }
                   ].map((proj) => (
                     <button
                       key={proj.id}
@@ -878,7 +878,7 @@ export default function App() {
                 <div className="flex justify-between text-gray-600 dark:text-gray-400">
                   <span>Proyecto Base</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    {selectedProject === 'landing' ? '800' : selectedProject === 'ecommerce' ? '2.500' : selectedProject === 'admin_app' ? '4.000' : '5.500'} €
+                    {selectedProject === 'landing' ? '800' : selectedProject === 'ecommerce' ? '2.000' : selectedProject === 'admin_app' ? '2.500' : '3.000'} €
                   </span>
                 </div>
                 {Object.entries(features).filter(([_, isSelected]) => isSelected).map(([id]) => (
